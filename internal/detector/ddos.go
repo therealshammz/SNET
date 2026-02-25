@@ -1,0 +1,222 @@
+package detector
+
+import (
+	"strings"
+	"time"
+
+	"ddd/internal/logger"
+	"ddd/internal/monitor"
+	"ddd/internal/stats"
+)
+
+// DDoSDetector detects various DDoS attack patterns
+type DDoSDetector struct {
+	rateLimit             int
+	highRateThreshold     int
+	repeatedQueriesMin    int
+	randomSubdomainsMin   int
+	queryBurstThreshold   int
+	queryBurstWindow      time.Duration
+	log                   *logger.Logger
+	stats                 *stats.StatsServer
+}
+
+// NewDDoSDetector creates a new DDoS detector with configurable thresholds
+func NewDDoSDetector(
+	rateLimit int,
+	highRateThreshold int,
+	repeatedQueriesMin int,
+	randomSubdomainsMin int,
+	queryBurstThreshold int,
+	queryBurstWindow time.Duration,
+	log *logger.Logger,
+	stats *stats.StatsServer,
+) *DDoSDetector {
+	return &DDoSDetector{
+		rateLimit:             rateLimit,
+		highRateThreshold:     highRateThreshold,
+		repeatedQueriesMin:    repeatedQueriesMin,
+		randomSubdomainsMin:   randomSubdomainsMin,
+		queryBurstThreshold:   queryBurstThreshold,
+		queryBurstWindow:      queryBurstWindow,
+		log:                   log,
+		stats:                 stats,
+	}
+}
+
+// DetectionResult holds the result of DDoS detection
+type DetectionResult struct {
+	IsAttack    bool
+	AttackType  string
+	Severity    string
+	Description string
+	ShouldBlock bool
+}
+
+// AnalyzeTraffic analyzes traffic from an IP and detects DDoS patterns
+func (d *DDoSDetector) AnalyzeTraffic(ip string, trafficMonitor *monitor.TrafficMonitor) *DetectionResult {
+	result := &DetectionResult{
+		IsAttack:    false,
+		ShouldBlock: false,
+	}
+
+	// Check 1: High request rate
+	recentCount := trafficMonitor.GetRecentRequestCount(ip, 1*time.Minute)
+	if recentCount > d.highRateThreshold {
+		result.IsAttack = true
+		result.AttackType = "high_request_rate"
+		result.Severity = d.calculateSeverity(recentCount, d.highRateThreshold)
+		result.Description = "Excessive request rate detected"
+		result.ShouldBlock = recentCount > d.highRateThreshold*2
+		d.log.LogDDoSDetected(ip, "high request rate", recentCount)
+		if d.stats != nil {
+			d.stats.AddDetection(ip, result.AttackType, result.Severity)
+		}
+		return result
+	}
+
+	// Get recent queries
+	queries := trafficMonitor.GetRecentQueries(ip, 1*time.Minute)
+
+	// Check 2: Repeated queries
+	if d.checkRepeatedQueries(queries) {
+		result.IsAttack = true
+		result.AttackType = "repeated_queries"
+		result.Severity = "medium"
+		result.Description = "Repeated queries to same domain detected"
+		result.ShouldBlock = true
+		d.log.LogDDoSDetected(ip, "repeated queries", len(queries))
+		if d.stats != nil {
+			d.stats.AddDetection(ip, result.AttackType, result.Severity)
+		}
+		return result
+	}
+
+	// Check 3: Random subdomain attack
+	if d.checkRandomSubdomains(queries) {
+		result.IsAttack = true
+		result.AttackType = "random_subdomain"
+		result.Severity = "high"
+		result.Description = "Random subdomain attack detected"
+		result.ShouldBlock = true
+		d.log.LogDDoSDetected(ip, "random subdomain attack", len(queries))
+		if d.stats != nil {
+			d.stats.AddDetection(ip, result.AttackType, result.Severity)
+		}
+		return result
+	}
+
+	// Check 4: Query burst
+	if d.checkQueryBurst(queries) {
+		result.IsAttack = true
+		result.AttackType = "query_burst"
+		result.Severity = "medium"
+		result.Description = "Query burst detected"
+		result.ShouldBlock = false
+		d.log.LogDDoSDetected(ip, "query burst", len(queries))
+		if d.stats != nil {
+			d.stats.AddDetection(ip, result.AttackType, result.Severity)
+		}
+		return result
+	}
+
+	return result
+}
+
+// checkRepeatedQueries (unchanged)
+func (d *DDoSDetector) checkRepeatedQueries(queries []monitor.QueryInfo) bool {
+	if len(queries) < d.repeatedQueriesMin {
+		return false
+	}
+	domainCounts := make(map[string]int)
+	for _, q := range queries {
+		domainCounts[q.Domain]++
+	}
+	for _, count := range domainCounts {
+		if float64(count)/float64(len(queries)) > 0.5 && count > 10 {
+			return true
+		}
+	}
+	return false
+}
+
+// checkRandomSubdomains (unchanged)
+func (d *DDoSDetector) checkRandomSubdomains(queries []monitor.QueryInfo) bool {
+	if len(queries) < d.randomSubdomainsMin {
+		return false
+	}
+	baseDomains := make(map[string][]string)
+	for _, q := range queries {
+		parts := strings.Split(q.Domain, ".")
+		if len(parts) >= 2 {
+			baseDomain := strings.Join(parts[len(parts)-2:], ".")
+			subdomain := strings.Join(parts[:len(parts)-2], ".")
+			if subdomain != "" {
+				baseDomains[baseDomain] = append(baseDomains[baseDomain], subdomain)
+			}
+		}
+	}
+	for _, subdomains := range baseDomains {
+		uniqueSubdomains := make(map[string]bool)
+		for _, sub := range subdomains {
+			uniqueSubdomains[sub] = true
+		}
+		if len(uniqueSubdomains) > 20 {
+			return true
+		}
+		randomCount := 0
+		for sub := range uniqueSubdomains {
+			if d.looksRandom(sub) {
+				randomCount++
+			}
+		}
+		if randomCount > 10 {
+			return true
+		}
+	}
+	return false
+}
+
+// checkQueryBurst (unchanged)
+func (d *DDoSDetector) checkQueryBurst(queries []monitor.QueryInfo) bool {
+	if len(queries) < 10 {
+		return false
+	}
+	cutoff := time.Now().Add(-d.queryBurstWindow)
+	recentCount := 0
+	for _, q := range queries {
+		if q.Timestamp.After(cutoff) {
+			recentCount++
+		}
+	}
+	return recentCount > d.queryBurstThreshold
+}
+
+// looksRandom (unchanged)
+func (d *DDoSDetector) looksRandom(s string) bool {
+	if len(s) < 8 {
+		return false
+	}
+	digitCount := 0
+	uniqueChars := make(map[rune]bool)
+	for _, c := range s {
+		uniqueChars[c] = true
+		if c >= '0' && c <= '9' {
+			digitCount++
+		}
+	}
+	highDigitRatio := float64(digitCount)/float64(len(s)) > 0.4
+	highEntropy := float64(len(uniqueChars))/float64(len(s)) > 0.6
+	return highDigitRatio && highEntropy
+}
+
+// calculateSeverity (unchanged)
+func (d *DDoSDetector) calculateSeverity(requestCount, threshold int) string {
+	ratio := float64(requestCount) / float64(threshold)
+	if ratio > 5 {
+		return "high"
+	} else if ratio > 2 {
+		return "medium"
+	}
+	return "low"
+}
