@@ -22,7 +22,7 @@ configs/config.local.yaml
 *.sublime-workspace
 *.sublime-project
 
-# OS junk
+# OS stuff
 .DS_Store
 Thumbs.db
 
