@@ -1,4 +1,3 @@
-// internal/dns/dns_filter.go
 package dns
 
 import (
@@ -14,10 +13,9 @@ import (
 	"ddd/internal/logger"
 )
 
-// DNSFilter handles domain blocking from lists
 type DNSFilter struct {
 	blockedDomains map[string]bool
-	redirectIP     net.IP // e.g. 127.0.0.1 for redirect
+	redirectIP     net.IP
 	log            *logger.Logger
 	mu             sync.RWMutex
 }
@@ -25,12 +23,11 @@ type DNSFilter struct {
 func NewDNSFilter(log *logger.Logger) *DNSFilter {
 	return &DNSFilter{
 		blockedDomains: make(map[string]bool),
-		redirectIP:     net.IP{127, 0, 0, 1}, // localhost by default
+		redirectIP:     net.IP{127, 0, 0, 1},
 		log:            log,
 	}
 }
 
-// LoadBlocklists loads domains from URLs or local files
 func (f *DNSFilter) LoadBlocklists(lists []string) error {
 	f.mu.Lock()
 	f.blockedDomains = make(map[string]bool)
@@ -70,9 +67,8 @@ func (f *DNSFilter) LoadBlocklists(lists []string) error {
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
-				continue // skip comments
+				continue
 			}
-			// Simple hosts format: 0.0.0.0 domain or domain
 			parts := strings.Fields(line)
 			domain := parts[len(parts)-1]
 			f.mu.Lock()
@@ -86,7 +82,6 @@ func (f *DNSFilter) LoadBlocklists(lists []string) error {
 	return nil
 }
 
-// HandleFilteredRequest checks if domain is blocked and responds accordingly
 func (f *DNSFilter) HandleFilteredRequest(w dns.ResponseWriter, r *dns.Msg) bool {
 	if len(r.Question) == 0 {
 		return false
@@ -103,7 +98,7 @@ func (f *DNSFilter) HandleFilteredRequest(w dns.ResponseWriter, r *dns.Msg) bool
 		m := new(dns.Msg)
 		m.SetReply(r)
 		m.Rcode = dns.RcodeNameError // NXDOMAIN
-		// Or redirect to localhost for A records
+		// Or redirect to localhost for A recod
 		if question.Qtype == dns.TypeA {
 			m.Rcode = dns.RcodeSuccess
 			rr, _ := dns.NewRR(fmt.Sprintf("%s A %s", question.Name, f.redirectIP.String()))
@@ -114,5 +109,5 @@ func (f *DNSFilter) HandleFilteredRequest(w dns.ResponseWriter, r *dns.Msg) bool
 		return true // handled
 	}
 
-	return false // not blocked, continue forwarding
+	return false
 }
