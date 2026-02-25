@@ -9,7 +9,6 @@ import (
 	"ddd/internal/stats"
 )
 
-// DDoSDetector detects various DDoS attack patterns
 type DDoSDetector struct {
 	rateLimit             int
 	highRateThreshold     int
@@ -21,7 +20,6 @@ type DDoSDetector struct {
 	stats                 *stats.StatsServer
 }
 
-// NewDDoSDetector creates a new DDoS detector with configurable thresholds
 func NewDDoSDetector(
 	rateLimit int,
 	highRateThreshold int,
@@ -44,7 +42,6 @@ func NewDDoSDetector(
 	}
 }
 
-// DetectionResult holds the result of DDoS detection
 type DetectionResult struct {
 	IsAttack    bool
 	AttackType  string
@@ -53,14 +50,12 @@ type DetectionResult struct {
 	ShouldBlock bool
 }
 
-// AnalyzeTraffic analyzes traffic from an IP and detects DDoS patterns
 func (d *DDoSDetector) AnalyzeTraffic(ip string, trafficMonitor *monitor.TrafficMonitor) *DetectionResult {
 	result := &DetectionResult{
 		IsAttack:    false,
 		ShouldBlock: false,
 	}
 
-	// Check 1: High request rate
 	recentCount := trafficMonitor.GetRecentRequestCount(ip, 1*time.Minute)
 	if recentCount > d.highRateThreshold {
 		result.IsAttack = true
@@ -75,10 +70,8 @@ func (d *DDoSDetector) AnalyzeTraffic(ip string, trafficMonitor *monitor.Traffic
 		return result
 	}
 
-	// Get recent queries
 	queries := trafficMonitor.GetRecentQueries(ip, 1*time.Minute)
 
-	// Check 2: Repeated queries
 	if d.checkRepeatedQueries(queries) {
 		result.IsAttack = true
 		result.AttackType = "repeated_queries"
@@ -92,7 +85,6 @@ func (d *DDoSDetector) AnalyzeTraffic(ip string, trafficMonitor *monitor.Traffic
 		return result
 	}
 
-	// Check 3: Random subdomain attack
 	if d.checkRandomSubdomains(queries) {
 		result.IsAttack = true
 		result.AttackType = "random_subdomain"
@@ -106,7 +98,6 @@ func (d *DDoSDetector) AnalyzeTraffic(ip string, trafficMonitor *monitor.Traffic
 		return result
 	}
 
-	// Check 4: Query burst
 	if d.checkQueryBurst(queries) {
 		result.IsAttack = true
 		result.AttackType = "query_burst"
@@ -123,7 +114,6 @@ func (d *DDoSDetector) AnalyzeTraffic(ip string, trafficMonitor *monitor.Traffic
 	return result
 }
 
-// checkRepeatedQueries (unchanged)
 func (d *DDoSDetector) checkRepeatedQueries(queries []monitor.QueryInfo) bool {
 	if len(queries) < d.repeatedQueriesMin {
 		return false
@@ -140,7 +130,6 @@ func (d *DDoSDetector) checkRepeatedQueries(queries []monitor.QueryInfo) bool {
 	return false
 }
 
-// checkRandomSubdomains (unchanged)
 func (d *DDoSDetector) checkRandomSubdomains(queries []monitor.QueryInfo) bool {
 	if len(queries) < d.randomSubdomainsMin {
 		return false
@@ -177,7 +166,6 @@ func (d *DDoSDetector) checkRandomSubdomains(queries []monitor.QueryInfo) bool {
 	return false
 }
 
-// checkQueryBurst (unchanged)
 func (d *DDoSDetector) checkQueryBurst(queries []monitor.QueryInfo) bool {
 	if len(queries) < 10 {
 		return false
@@ -192,7 +180,6 @@ func (d *DDoSDetector) checkQueryBurst(queries []monitor.QueryInfo) bool {
 	return recentCount > d.queryBurstThreshold
 }
 
-// looksRandom (unchanged)
 func (d *DDoSDetector) looksRandom(s string) bool {
 	if len(s) < 8 {
 		return false
@@ -210,7 +197,6 @@ func (d *DDoSDetector) looksRandom(s string) bool {
 	return highDigitRatio && highEntropy
 }
 
-// calculateSeverity (unchanged)
 func (d *DDoSDetector) calculateSeverity(requestCount, threshold int) string {
 	ratio := float64(requestCount) / float64(threshold)
 	if ratio > 5 {
