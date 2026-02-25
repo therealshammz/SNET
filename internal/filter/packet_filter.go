@@ -1,4 +1,3 @@
-// internal/filter/packet_filter.go
 package filter
 
 import (
@@ -19,7 +18,6 @@ import (
 	"ddd/internal/logger"
 )
 
-// Config for the packet filter
 type Config struct {
 	Interface     string
 	SYNThreshold  int
@@ -28,14 +26,13 @@ type Config struct {
 	UpstreamDNS   string
 }
 
-// PacketFilter sniffs and filters L3/L4 traffic
 type PacketFilter struct {
 	cfg      Config
 	handle   *pcap.Handle
 	blocker  *blocker.IPBlocker
 	log      *logger.Logger
-	trackers sync.Map // string(IP) → *ipTracker
-	suppress sync.Map // string(IP) → *suppressState
+	trackers sync.Map 
+	suppress sync.Map 
 	ctx      context.Context
 	cancel   context.CancelFunc
 }
@@ -53,7 +50,7 @@ type suppressState struct {
 	lastBlockTime  time.Time
 	dropCount      int64
 	lastPacketTime time.Time
-	rate           float64 // packets/sec (EWMA)
+	rate           float64
 }
 
 func NewPacketFilter(cfg Config, b *blocker.IPBlocker, l *logger.Logger) *PacketFilter {
@@ -114,7 +111,6 @@ func (f *PacketFilter) analyze(packet gopacket.Packet) {
 	ip4, _ := ip4Layer.(*layers.IPv4)
 	src := ip4.SrcIP.String()
 
-	// Skip trusted upstream DNS responses
 	upstreamHost, _, _ := net.SplitHostPort(f.cfg.UpstreamDNS)
 	if upstreamHost == "" {
 		upstreamHost = f.cfg.UpstreamDNS
@@ -124,7 +120,6 @@ func (f *PacketFilter) analyze(packet gopacket.Packet) {
 	}
 
 	if f.blocker.IsBlocked(src) {
-		// Update suppression stats instead of logging every packet
 		f.updateSuppression(src)
 		return
 	}
@@ -166,7 +161,6 @@ func (f *PacketFilter) analyze(packet gopacket.Packet) {
 		f.blocker.BlockIP(src, reason)
 		f.log.Warnw(reason, "ip", src, "count", count)
 
-		// Add iptables DROP rule
 		go func() {
 			cmd := exec.Command("iptables", "-A", "FORWARD", "-s", src, "-j", "DROP")
 			if err := cmd.Run(); err != nil {
@@ -176,12 +170,10 @@ func (f *PacketFilter) analyze(packet gopacket.Packet) {
 			}
 		}()
 
-		// Start suppression if not already
 		f.startSuppression(src)
 	}
 }
 
-// startSuppression begins periodic summary logging for this IP
 func (f *PacketFilter) startSuppression(ip string) {
 	stateIface, _ := f.suppress.LoadOrStore(ip, &suppressState{})
 	state := stateIface.(*suppressState)
@@ -209,7 +201,6 @@ func (f *PacketFilter) startSuppression(ip string) {
 			case <-ticker.C:
 				state.mu.Lock()
 				if time.Since(state.lastPacketTime) > 10*time.Second {
-					// No activity for 10s → stop suppression
 					state.suppressed = false
 					state.mu.Unlock()
 					return
@@ -218,7 +209,6 @@ func (f *PacketFilter) startSuppression(ip string) {
 				elapsed := time.Since(state.lastBlockTime).Seconds()
 				rate := float64(state.dropCount) / elapsed
 				if elapsed > 0 {
-					// EWMA smoothing for rate
 					state.rate = 0.8*state.rate + 0.2*rate
 				}
 
@@ -235,7 +225,6 @@ func (f *PacketFilter) startSuppression(ip string) {
 	}()
 }
 
-// updateSuppression increments counters for suppressed IPs
 func (f *PacketFilter) updateSuppression(ip string) {
 	stateIface, ok := f.suppress.Load(ip)
 	if !ok {
@@ -254,7 +243,6 @@ func (f *PacketFilter) updateSuppression(ip string) {
 	state.lastPacketTime = time.Now()
 }
 
-// cleanupLoop (unchanged, but add suppression cleanup if needed)
 func (f *PacketFilter) cleanupLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -273,7 +261,6 @@ func (f *PacketFilter) cleanupLoop() {
 				return true
 			})
 
-			// Optional: clean old suppressed states
 			f.suppress.Range(func(key, val interface{}) bool {
 				s := val.(*suppressState)
 				s.mu.Lock()
