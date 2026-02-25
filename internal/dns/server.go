@@ -1,4 +1,3 @@
-// internal/dns/server.go
 package dns
 
 import (
@@ -16,7 +15,6 @@ import (
 	"ddd/internal/monitor"
 )
 
-// Server is the DNS server with DDoS protection
 type Server struct {
 	port           int
 	upstreamDNS    string
@@ -33,7 +31,6 @@ type Server struct {
 	dnsFilter      *DNSFilter
 }
 
-// NewServer creates a new DNS server
 func NewServer(
 	port int,
 	upstreamDNS string,
@@ -75,14 +72,12 @@ func NewServer(
 	return s
 }
 
-// Start starts both UDP and TCP listeners in background goroutines
 func (s *Server) Start() error {
 	s.log.Info("Starting DNS listeners",
 		"port", s.port,
 		"protocols", "UDP and TCP",
 	)
 
-	// UDP
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -91,7 +86,6 @@ func (s *Server) Start() error {
 		}
 	}()
 
-	// TCP
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -103,13 +97,11 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Stop gracefully shuts down both listeners and waits for them to exit
 func (s *Server) Stop() error {
 	s.log.Info("Shutting down DNS listeners")
 
-	s.cancel() // Signal context cancellation
+	s.cancel()
 
-	// Trigger shutdown on both servers
 	errUDP := s.udpServer.Shutdown()
 	if errUDP != nil {
 		s.log.Error("UDP shutdown error", "error", errUDP)
@@ -120,7 +112,6 @@ func (s *Server) Stop() error {
 		s.log.Error("TCP shutdown error", "error", errTCP)
 	}
 
-	// Wait for both goroutines to finish
 	s.wg.Wait()
 
 	s.log.Info("DNS listeners fully stopped")
@@ -134,7 +125,6 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-// handleDNSRequest (unchanged)
 func (s *Server) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	clientIP := s.extractClientIP(w.RemoteAddr())
 
@@ -181,7 +171,6 @@ func (s *Server) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	s.forwardRequest(w, r)
 }
 
-// forwardRequest (unchanged)
 func (s *Server) forwardRequest(w dns.ResponseWriter, r *dns.Msg) {
 	resp, _, err := s.upstreamClient.Exchange(r, s.upstreamDNS)
 	if err != nil {
@@ -201,7 +190,6 @@ func (s *Server) forwardRequest(w dns.ResponseWriter, r *dns.Msg) {
 	}
 }
 
-// sendRefused (unchanged)
 func (s *Server) sendRefused(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
@@ -209,7 +197,6 @@ func (s *Server) sendRefused(w dns.ResponseWriter, r *dns.Msg) {
 	w.WriteMsg(m)
 }
 
-// sendServerFailure (unchanged)
 func (s *Server) sendServerFailure(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
@@ -217,7 +204,6 @@ func (s *Server) sendServerFailure(w dns.ResponseWriter, r *dns.Msg) {
 	w.WriteMsg(m)
 }
 
-// extractClientIP (unchanged)
 func (s *Server) extractClientIP(addr net.Addr) string {
 	switch v := addr.(type) {
 	case *net.UDPAddr:
