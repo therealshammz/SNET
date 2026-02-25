@@ -8,7 +8,6 @@ echo "│   by 5H4MMZ - Installs to /usr/local/bin     │"
 echo "└──────────────────────────────────────────────┘"
 echo ""
 
-# Must be run with sudo for installation
 if [[ $EUID -ne 0 ]]; then
    echo "This script must be run as root (sudo)."
    echo "Run: sudo ./setup.sh"
@@ -41,7 +40,6 @@ if ! pkg-config --exists libpcap 2>/dev/null; then
 fi
 echo "✓ libpcap development files found"
 
-# Build the binary
 echo "Building SNET..."
 go build -o "$BINARY_NAME" ./cmd/server
 if [ $? -ne 0 ]; then
@@ -50,17 +48,14 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ Binary built: $BINARY_NAME"
 
-# Install binary
 echo "Installing binary to $INSTALL_PATH..."
 install -m 755 "$BINARY_NAME" "$INSTALL_PATH"
-rm -f "$BINARY_NAME"  # clean up local copy
+rm -f "$BINARY_NAME"
 echo "✓ Installed: $INSTALL_PATH"
 
-# Create config and log directories
 mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 chmod 755 "$CONFIG_DIR" "$LOG_DIR"
 
-# Copy default config if missing
 DEFAULT_CONFIG="$CONFIG_DIR/config.yaml"
 if [ ! -f "$DEFAULT_CONFIG" ]; then
     echo "Creating default config at $DEFAULT_CONFIG..."
@@ -88,7 +83,6 @@ else
     echo "✓ Config already exists at $DEFAULT_CONFIG"
 fi
 
-# Create systemd service file
 SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
 echo "Creating systemd service: $SERVICE_PATH..."
 cat > "$SERVICE_PATH" << EOF
