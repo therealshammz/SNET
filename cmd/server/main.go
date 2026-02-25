@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"   // ← important for path resolution
+	"path/filepath"   //path resolution
 	"strings"
 	"syscall"
 	"time"
@@ -38,7 +38,6 @@ func main() {
 	)
 	flag.Parse()
 
-	// === RESOLVE CONFIG PATH RELATIVE TO BINARY LOCATION ===
 	configPathResolved := *configPath
 	if !filepath.IsAbs(configPathResolved) {
 		exe, err := os.Executable()
@@ -50,20 +49,17 @@ func main() {
 		configPathResolved = filepath.Join(exeDir, configPathResolved)
 	}
 
-	// Auto-create config file + directories using resolved path
 	if err := config.EnsureConfig(configPathResolved); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to ensure config: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Load config using the resolved absolute path
 	cfg, err := config.LoadFromFile(configPathResolved)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Apply flag overrides
 	if *port > 0 {
 		cfg.Port = *port
 	}
@@ -99,7 +95,6 @@ func main() {
 
 	trafficMonitor := monitor.NewTrafficMonitor()
 
-	// Stats server
 	statsAddr := cfg.StatsPort
 	if statsAddr == "" {
 		statsAddr = ":8080"
@@ -125,19 +120,17 @@ func main() {
 	if *mode == "gateway" {
 		log.Info("Starting in GATEWAY mode - network-wide protection")
 
-		// Auto-enable IP forwarding
 		if err := exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").Run(); err != nil {
 			log.Error("Failed to enable IP forwarding", zap.Error(err))
 		} else {
 			log.Info("IP forwarding enabled")
 		}
 
-		// Auto-detect WAN interface for NAT
-		wanIface, err := getDefaultInterface()
+
+				wanIface, err := getDefaultInterface()
 		if err != nil {
 			log.Error("Cannot detect default WAN interface", zap.Error(err))
 		} else {
-			// Add NAT masquerade
 			natCmd := exec.Command("iptables", "-t", "nat", "-A", "POSTROUTING", "-o", wanIface, "-j", "MASQUERADE")
 			if err := natCmd.Run(); err != nil {
 				log.Error("Failed to add NAT rule", zap.Error(err))
@@ -145,7 +138,6 @@ func main() {
 				log.Info("NAT masquerade rule added", "interface", wanIface)
 			}
 
-			// Cleanup NAT on exit
 			defer func() {
 				flushCmd := exec.Command("iptables", "-t", "nat", "-D", "POSTROUTING", "-o", wanIface, "-j", "MASQUERADE")
 				flushCmd.Run()
@@ -153,7 +145,6 @@ func main() {
 			}()
 		}
 
-		// Select interface for filtering
 		selectedIface := *iface
 		if selectedIface == "auto" || selectedIface == "" {
 			if cfg.FilterInterface != "" && cfg.FilterInterface != "auto" {
@@ -181,7 +172,6 @@ func main() {
 			defer packetFilter.Stop()
 		}
 
-		// Start DNS server too (for LAN DNS filtering)
 		dnsServer := dns.NewServer(
 			cfg.Port,
 			cfg.UpstreamDNS,
@@ -219,7 +209,6 @@ func main() {
 	// ====================== DNS PROXY MODE ======================
 	log.Info("Starting in DNS proxy mode")
 
-	// Smart interface selection
 	selectedIface := *iface
 	if selectedIface == "auto" && cfg.FilterInterface != "" && cfg.FilterInterface != "auto" {
 		selectedIface = cfg.FilterInterface
@@ -319,7 +308,6 @@ func main() {
 	log.Info("SNET stopped gracefully")
 }
 
-// listActiveInterfaces returns names of UP, non-loopback interfaces
 func listActiveInterfaces() ([]string, error) {
 	out, err := exec.Command("ip", "link", "show").Output()
 	if err != nil {
@@ -352,7 +340,6 @@ func listActiveInterfaces() ([]string, error) {
 	return ifaces, nil
 }
 
-// getDefaultInterface finds the interface with default route
 func getDefaultInterface() (string, error) {
 	out, err := exec.Command("ip", "-o", "-4", "route", "show", "default").Output()
 	if err != nil {
