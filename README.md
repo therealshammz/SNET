@@ -1,300 +1,158 @@
-# DNS DDoS Defense System
+# SNET – Simple Network Defense Tool
 
-A Go-based DNS server with built-in DDoS protection capabilities including traffic monitoring, attack detection, rate limiting, and IP blocking.
+**SNET** is a lightweight, configurable, Go-based DNS proxy and L4 flood mitigator with real-time stats and basic gateway/firewall capabilities.
+
+It was built as a learning/experimental project to explore DNS-level DDoS detection, packet-level filtering, configurability, observability, and self-contained runtime behavior.
+
+**This is not production-grade software.**  
+It is **not** intended to be used in professional, commercial, enterprise, or any security-critical environments.  
+It lacks hardening, comprehensive testing, audit trails, proper privilege separation, rate-limit bypass resistance, and many other properties required for real-world deployment.
+
+Use it for educational purposes, home lab experiments, or personal tinkering only.
 
 ## Features
 
-- **DNS Server**: Responds to DNS requests and forwards to upstream DNS
-- **Traffic Monitoring**: Tracks requests per IP address
-- **DDoS Detection**: Detects multiple attack patterns:
-  - High request rate
-  - Repeated queries
-  - Random subdomain attacks
-  - Query bursts
-- **Mitigation**: Automatically blocks or rate limits attackers
-- **Logging**: Comprehensive activity and mitigation logging
+- DNS proxy (UDP + TCP) forwarding to any upstream resolver
+- Per-IP rate limiting & temporary blocking
+- Four DNS-specific attack pattern detectors:
+  - Excessive request rate
+  - Repeated queries to the same domain
+  - Random subdomain / water torture attacks
+  - Sudden query bursts in short windows
+- L3/L4 flood detection (SYN flood, UDP flood) via packet sniffing
+- Automatic interface detection with interactive prompt
+- All thresholds configurable via YAML + flag overrides
+- HTTP `/stats` endpoint exposing:
+  - Uptime
+  - Blocked IPs (count + details)
+  - Recent detections (last 10)
+  - Current configuration snapshot
+- Structured JSON logging (zap)
 
-## Prerequisites
+## Current limitations (explicitly not production-ready)
 
-- Go 1.21 or higher
-- Root/sudo privileges (for binding to port 53)
-- Linux/Unix environment recommended
+- No hardening against bypass techniques
+- iptables rules are not namespaced or cleaned perfectly in all failure cases
+- No authentication / access control on `/stats`
+- No persistent block list across restarts
+- No advanced anomaly detection (just rule-based + basic suppression)
+- No TLS/DoH/DoT support
+- No IPv6 support
+- No formal security audit or fuzzing
+- Logs can be verbose under load
 
-## Installation
+## Quick Start
 
-1. **Clone the project:**
 ```bash
-git clone https://github.com/therealshammz/ddd.git
-```
-
-2. **Initialize and download dependencies:**
-```bash
-cd ddd
- # Use install script
+# Build
 ./setup.sh
+
+# Basic DNS proxy (no sudo)
+./snet -port 8053
+
+# Full mode with filtering (requires sudo)
+sudo ./snet -port 53 -iface wlp0s20f3
+
+# Gateway mode (network-wide protection)
+sudo ./snet --mode gateway --iface wlp0s20f3
+
+# View stats
+curl http://localhost:8080/stats
 ```
 
-## Running
+## Configuration (configs/config.yaml)
 
-### Basic Usage
+```yaml
+port: 8053
+upstream_dns: "8.8.8.8:53"
+log_file: "logs/snet.log"
+rate_limit: 100
+block_time: 300
+filter_interface: "auto"
+stats_port: ":8080"
+
+high_rate_threshold: 100
+repeated_queries_min: 20
+random_subdomains_min: 20
+query_burst_threshold: 50
+query_burst_window_sec: 10
+
+syn_threshold: 50
+udp_threshold: 200
+filter_window_sec: 60
+```
+
+All values are optional — missing keys fall back to defaults.
+
+## Installation (system-wide)
 
 ```bash
-# Run with default settings (requires root for port 53)
-sudo ./dns-defense-server
-
-# Or run on non-privileged port
-./dns-defense-server -port 5353
+sudo ./setup.sh
 ```
 
-### Command Line Options
+This:
+- Builds `snet`
+- Installs to `/usr/local/bin/snet`
+- Creates `/etc/snet/config.yaml` (if missing)
+- Creates `/var/log/snet/` for logs
+- Installs systemd service (`snet.service`)
+
+Then use:
 
 ```bash
-./dns-defense-server [options]
-
-Options:
-  -port int
-        DNS server port (default 53)
-  -upstream string
-        Upstream DNS server (default "8.8.8.8:53")
-  -log string
-        Log file path (default "logs/dns-defense.log")
-  -rate-limit int
-        Max requests per IP per minute (default 100)
-  -block-time int
-        Block duration in seconds (default 300)
+snet --help
+sudo systemctl start snet
+sudo systemctl enable snet
+sudo systemctl status snet
+journalctl -u snet -f
 ```
 
-### Example Configurations
+## Docker
 
 ```bash
-# Run on port 5353 with Cloudflare DNS and strict rate limiting
-./dns-defense-server -port 5353 -upstream 1.1.1.1:53 -rate-limit 50
+# Build
+docker build -t snet:latest .
 
-# Run with longer block time
-sudo ./dns-defense-server -block-time 600 -rate-limit 75
+# DNS-only mode
+docker run -d --name snet-dns \
+  --net=host --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v $(pwd)/configs:/configs \
+  -v $(pwd)/logs:/logs \
+  snet:latest --config /configs/config.yaml --port 8053
 
-# Run with custom log location
-sudo ./dns-defense-server -log /var/log/dns-defense.log
+# Gateway mode
+docker run -d --name snet-gateway \
+  --net=host --privileged \
+  -v $(pwd)/configs:/configs \
+  -v $(pwd)/logs:/logs \
+  snet:latest --config /configs/config.yaml --mode gateway --iface wlp0s20f3
 ```
 
-## Testing
-
-### Test DNS Resolution
+## Building from source
 
 ```bash
-# Query the DNS server
-dig @localhost -p 5353 example.com
+# One-time setup & build
+./setup.sh
 
-# Or with nslookup
-nslookup example.com localhost
+# Manual
+go mod tidy
+go build -o snet ./cmd/server
 ```
 
-### Test Rate Limiting
+## Disclaimer (read this)
 
-```bash
-# Send many requests quickly (will trigger rate limiting)
-for i in {1..150}; do dig @localhost -p 5353 test$i.example.com; done
-```
+**SNET is a student/hobby project.**  
+It is **not** audited, **not** hardened, and **not** suitable for protecting real networks, production systems, or anything valuable.
 
-### Test Random Subdomain Detection
+It may:
+- Miss attacks
+- Cause false positives
+- Leak information
+- Open security holes if misconfigured
+- Break networking if gateway mode is used incorrectly
 
-```bash
-# Simulate random subdomain attack
-for i in {1..50}; do 
-  dig @localhost -p 5353 $(openssl rand -hex 8).example.com
-done
-```
-
-## Monitoring
-
-### View Logs
-
-```bash
-# Tail logs in real-time
-tail -f logs/dns-defense.log
-
-# Search for blocked IPs
-grep "IP Blocked" logs/dns-defense.log
-
-# View DDoS detections
-grep "DDoS Pattern Detected" logs/dns-defense.log
-```
-
-### Log Format
-
-Logs are in JSON format for easy parsing:
-
-```json
-{
-  "level": "warn",
-  "timestamp": "2026-01-19T10:30:45.123Z",
-  "msg": "DDoS Pattern Detected",
-  "client_ip": "192.168.1.100",
-  "reason": "high request rate",
-  "request_count": 150,
-  "event": "ddos_detected"
-}
-```
-
-## Architecture
-
-```
-┌─────────────┐
-│   Client    │
-└──────┬──────┘
-       │ DNS Query
-       ▼
-┌─────────────────────────────────────┐
-│        DNS Server (Port 53)         │
-├─────────────────────────────────────┤
-│  1. Check if IP is blocked          │
-│  2. Check if IP is rate limited     │
-│  3. Record request in monitor       │
-│  4. Analyze for DDoS patterns       │
-│  5. Apply mitigation if needed      │
-│  6. Forward to upstream DNS         │
-└──────┬──────────────────────────────┘
-       │
-       ▼
-┌─────────────┐
-│  Upstream   │
-│ DNS Server  │
-└─────────────┘
-```
-
-## Attack Detection Logic
-
-### High Request Rate
-- Triggers when requests exceed configured limit per minute
-- Default: 100 requests/minute
-- Severity based on how much limit is exceeded
-
-### Repeated Queries
-- Detects when same domain is queried >50% of the time
-- Minimum 20 queries required for detection
-- Often indicates DNS amplification attacks
-
-### Random Subdomain Attack
-- Detects >20 unique subdomains for same base domain
-- Identifies randomly generated subdomain patterns
-- Common in DNS water torture attacks
-
-### Query Burst
-- Detects >50 queries in 10-second window
-- Indicates sudden attack spike
-- Applies rate limiting rather than blocking
-
-## Mitigation Actions
-
-### Rate Limiting
-- Applied for less severe patterns
-- 30-second rate limit window
-- Adds 500ms delay to requests
-
-### IP Blocking
-- Applied for severe attack patterns
-- Default block duration: 5 minutes (300 seconds)
-- Repeated attacks extend block duration
-
-## Project Structure
-
-```
-ddd/
-.
-├── cmd
-│   └── server
-│       └── main.go
-├── configs
-├── dns-defense-server
-├── go.mod
-├── go.sum
-├── internal
-│   ├── blocker
-│   │   └── ratelimit.go
-│   ├── detector
-│   │   └── ddos.go
-│   ├── dns
-│   │   └── server.go
-│   ├── logger
-│   │   └── logger.go
-│   └── monitor
-│       └── traffic.go
-├── logs
-├── Makefile
-├── output.txt
-├── QUICKSTART.md
-├── README.md
-├── SDLC_WORKFLOW.mermaid
-├── setup.sh
-├── test
-│   └── detector_test.go
-└── TROUBLESHOOTING.md
-
-```
-
-## Production Deployment
-
-### System Service (systemd)
-
-Create `/etc/systemd/system/dns-defense.service`:
-
-```ini
-[Unit]
-Description=DNS DDoS Defense Server
-After=network.target
-
-[Service]
-Type=simple
-User=root
-ExecStart=/usr/local/bin/dns-defense-server -port 53 -log /var/log/dns-defense.log
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
-```bash
-sudo systemctl enable dns-defense.service
-sudo systemctl start dns-defense.service
-sudo systemctl status dns-defense.service
-```
-
-### Security Considerations
-
-1. **Run with minimal privileges**: Consider using capabilities instead of root
-2. **Firewall rules**: Restrict access to DNS port
-3. **Log rotation**: Set up logrotate for log files
-4. **Monitoring**: Integrate with monitoring systems
-5. **Backup DNS**: Have fallback DNS servers configured
-
-## Troubleshooting
-
-### Port 53 Already in Use
-
-```bash
-# Check what's using port 53
-sudo lsof -i :53
-
-# Stop systemd-resolved if it's blocking
-sudo systemctl stop systemd-resolved
-```
-
-### Permission Denied
-
-```bash
-# Run with sudo for privileged ports
-sudo ./dns-defense-server
-
-# Or use setcap to allow binding to port 53
-sudo setcap 'cap_net_bind_service=+ep' ./dns-defense-server
-```
+Use only in isolated test environments.
 
 ## License
 
-MIT License - feel free to use and modify for your needs.
-
-## Contributing
-
-Contributions welcome! Please test thoroughly before submitting pull requests.
+GNU General Public License v3.0
