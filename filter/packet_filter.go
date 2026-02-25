@@ -1,4 +1,4 @@
-// Package filter provides L3/L4 packet filtering for broader attack mitigation beyond DNS.
+
 package filter
 
 import (
@@ -11,13 +11,12 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"go.uber.org/zap" // Assuming you use zap from your logger.
+	"go.uber.org/zap" 
 
-	"yourproject/internal/blocker" // Import your existing blocker for shared IP blacklisting.
-	"yourproject/internal/logger" // For logging.
+	"snet/internal/blocker"
+	"snet/internal/logger" 
 )
 
-// Config holds filter settings, load from your main config.
 type Config struct {
 	Interface     string        // Network interface to sniff (e.g., "eth0").
 	SYNThreshold  int           // Max SYNs per IP per minute.
@@ -25,18 +24,16 @@ type Config struct {
 	Window        time.Duration // Tracking window (e.g., 1m).
 }
 
-// PacketFilter monitors and filters L3/L4 traffic.
 type PacketFilter struct {
 	cfg          Config
 	handle       *pcap.Handle
-	blocker      *blocker.IPBlocker // Reuse your existing blocker.
+	blocker      *blocker.IPBlocker
 	logger       *logger.Logger
-	trackers     sync.Map           // ip → *ipTracker
+	trackers     sync.Map           
 	ctx          context.Context
 	cancel       context.CancelFunc
 }
 
-// ipTracker holds per-IP stats.
 type ipTracker struct {
 	mu            sync.Mutex
 	synCount      int
@@ -44,7 +41,6 @@ type ipTracker struct {
 	lastReset     time.Time
 }
 
-// NewPacketFilter creates a new filter.
 func NewPacketFilter(cfg Config, blocker *blocker.IPBlocker, logger *logger.Logger) *PacketFilter {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &PacketFilter{
@@ -56,7 +52,6 @@ func NewPacketFilter(cfg Config, blocker *blocker.IPBlocker, logger *logger.Logg
 	}
 }
 
-// Start begins packet sniffing and filtering.
 func (f *PacketFilter) Start() error {
 	var err error
 	f.handle, err = pcap.OpenLive(f.cfg.Interface, 1600, true, pcap.BlockForever)
@@ -64,7 +59,6 @@ func (f *PacketFilter) Start() error {
 		return fmt.Errorf("open interface: %w", err)
 	}
 
-	// Filter to TCP/UDP only (adjust BPF as needed).
 	err = f.handle.SetBPFFilter("tcp or udp")
 	if err != nil {
 		f.handle.Close()
@@ -76,7 +70,6 @@ func (f *PacketFilter) Start() error {
 	return nil
 }
 
-// Stop shuts down the filter.
 func (f *PacketFilter) Stop() {
 	f.cancel()
 	if f.handle != nil {
@@ -84,7 +77,6 @@ func (f *PacketFilter) Stop() {
 	}
 }
 
-// processPackets reads and analyzes packets.
 func (f *PacketFilter) processPackets() {
 	packetSource := gopacket.NewPacketSource(f.handle, f.handle.LinkType())
 	for {
@@ -97,19 +89,17 @@ func (f *PacketFilter) processPackets() {
 	}
 }
 
-// analyzePacket checks for floods and blocks if needed.
 func (f *PacketFilter) analyzePacket(packet gopacket.Packet) {
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer == nil {
-		return // Non-IPv4, ignore.
+		return 
 	}
 	ip, _ := ipLayer.(*layers.IPv4)
 
 	srcIP := ip.SrcIP.String()
 	if f.blocker.IsBlocked(srcIP) {
-		// Drop: In userspace, we can't kernel-drop, but log and skip forwarding if this is a proxy.
 		f.logger.LogMitigationAction(srcIP, "packet dropped (blocked IP)")
-		return // Simulate drop by not processing further.
+		return
 	}
 
 	trackerIface, _ := f.trackers.LoadOrStore(srcIP, &ipTracker{lastReset: time.Now()})
@@ -142,10 +132,8 @@ func (f *PacketFilter) analyzePacket(packet gopacket.Packet) {
 		}
 	}
 
-	// If clean, "forward" (in reality, since we're sniffing, packets proceed unless we inject drops).
 }
 
-// cleanupLoop prunes old trackers.
 func (f *PacketFilter) cleanupLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
