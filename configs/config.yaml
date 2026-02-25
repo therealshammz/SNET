@@ -1,5 +1,5 @@
 port: 8053
-upstream_dns: "8.8.8.8:53"
+upstream_dns: "8.8.8.8"
 log_file: "logs/dns-defense.log"
 rate_limit: 100
 block_time: 300
