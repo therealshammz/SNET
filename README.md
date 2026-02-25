@@ -153,6 +153,18 @@ It may:
 
 Use only in isolated test environments.
 
-## License
+## License & Usage Consent
 
-GNU General Public License v3.0
+SNET is released under the **MIT License** (see [LICENSE](./LICENSE)).
+
+**Important consent notice:**
+
+This project is provided **as-is** for educational, personal, and experimental use only.
+
+By using SNET you explicitly agree and consent to the following:
+
+- This software is **not audited, not hardened, and not suitable** for protecting real networks, production systems, sensitive data, or any environment where security or availability matters.
+- It may miss attacks, create false positives/negatives, open unintended holes, or disrupt networking.
+- The author(s) accept **no liability** whatsoever for any damage, data loss, downtime, legal consequences, or other harm resulting from use (or misuse) of this software.
+- Do not use SNET in any professional, commercial, enterprise, government, or security-critical context.
+- If you redistribute or modify SNET, you must retain this consent notice and the MIT license.
