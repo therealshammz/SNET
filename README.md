@@ -1,71 +1,105 @@
-# SNET – Simple Network Defense Tool
+# SNET – Simple Network Defense
 
-**SNET** is a lightweight, configurable, Go-based DNS proxy and L4 flood mitigator with real-time stats and basic gateway/firewall capabilities.
+**SNET** is a lightweight, single-binary Go tool that acts as a DNS proxy with built-in DDoS mitigation (DNS-layer + L3/L4 flood protection) and optional gateway mode for network-wide filtering.
 
-It was built as a learning/experimental project to explore DNS-level DDoS detection, packet-level filtering, configurability, observability, and self-contained runtime behavior.
+It is **experimental / educational software** — **not audited, not hardened, and not suitable** for protecting real networks, production systems, sensitive data, or anything important.
 
-**This is not production-grade software.**  
-It is **not** intended to be used in professional, commercial, enterprise, or any security-critical environments.  
-It lacks hardening, comprehensive testing, audit trails, proper privilege separation, rate-limit bypass resistance, and many other properties required for real-world deployment.
-
-Use it for educational purposes, home lab experiments, or personal tinkering only.
+Use it for learning, home labs, or personal tinkering only. No warranty, no liability.
 
 ## Features
 
 - DNS proxy (UDP + TCP) forwarding to any upstream resolver
 - Per-IP rate limiting & temporary blocking
-- Four DNS-specific attack pattern detectors:
-  - Excessive request rate
-  - Repeated queries to the same domain
-  - Random subdomain / water torture attacks
-  - Sudden query bursts in short windows
-- L3/L4 flood detection (SYN flood, UDP flood) via packet sniffing
-- Automatic interface detection with interactive prompt
-- All thresholds configurable via YAML + flag overrides
-- HTTP `/stats` endpoint exposing:
-  - Uptime
-  - Blocked IPs (count + details)
-  - Recent detections (last 10)
-  - Current configuration snapshot
-- Structured JSON logging (zap)
+- DNS attack detectors:
+  - High request rate
+  - Repeated same-domain queries
+  - Random subdomain / water torture
+  - Sudden query bursts
+- L3/L4 flood detection (SYN + UDP) via packet sniffing
+- HTTP `/stats` endpoint (uptime, blocked IPs, recent detections, config snapshot)
+- Gateway mode: auto IP forwarding + NAT masquerade + iptables drops + cleanup
+- Smart log suppression (no spam during sustained floods)
+- Binary-relative config & logs (portable — move binary anywhere, auto-creates missing files)
+- Graceful shutdown, structured JSON logging
 
-## Current limitations (explicitly not production-ready)
+## Requirements
 
-- No hardening against bypass techniques
-- iptables rules are not namespaced or cleaned perfectly in all failure cases
-- No authentication / access control on `/stats`
-- No persistent block list across restarts
-- No advanced anomaly detection (just rule-based + basic suppression)
-- No TLS/DoH/DoT support
-- No IPv6 support
-- No formal security audit or fuzzing
-- Logs can be verbose under load
+- Linux (gateway mode uses iptables/sysctl)
+- sudo (for port 53, packet capture, gateway mode)
+- libpcap-dev (for packet filtering)
 
-## Quick Start
+## Quick Setup (5 minutes)
 
+### 1. Clone the repo
 ```bash
-# Build
-./setup.sh
-
-# Basic DNS proxy (no sudo)
-./snet -port 8053
-
-# Full mode with filtering (requires sudo)
-sudo ./snet -port 53 -iface wlp0s20f3
-
-# Gateway mode (network-wide protection)
-sudo ./snet --mode gateway --iface wlp0s20f3
-
-# View stats
-curl http://localhost:8080/stats
+git clone https://github.com/therealshammz/SNET.git
+cd SNET
 ```
 
-## Configuration (configs/config.yaml)
+### 2. Install system-wide (recommended)
+```bash
+sudo ./setup.sh
+```
+
+This does everything:
+- Builds `snet` binary
+- Installs to `/usr/local/bin/snet` (now runnable from **anywhere** as just `snet`)
+- Creates `/etc/snet/config.yaml` (default config)
+- Creates `/var/log/snet/` for logs
+- Installs systemd service `snet.service` (auto-start on boot, manageable with `systemctl`)
+
+### 3. Run SNET (after install)
+
+#### Basic DNS proxy (no sudo needed)
+```bash
+snet --port 8053
+```
+
+Test:
+```bash
+dig @127.0.0.1 -p 8053 google.com
+```
+
+#### Full mode with filtering (sudo required)
+```bash
+sudo snet --port 53 --iface <interface>
+```
+
+#### Gateway mode (network-wide protection)
+```bash
+sudo snet --mode gateway --iface <interface>
+```
+
+This automatically:
+- Enables IP forwarding
+- Detects WAN interface
+- Adds NAT masquerade
+- Starts filtering + DNS proxy
+- Cleans up NAT on Ctrl+C
+
+On clients: set **default gateway** to your machine’s LAN IP.
+
+### 4. Run as a system service (auto-start on boot)
+
+```bash
+sudo systemctl start snet
+sudo systemctl enable snet
+sudo systemctl status snet
+```
+
+Logs:
+```bash
+journalctl -u snet -f
+```
+
+## Configuration
+
+Default config is created at `/etc/snet/config.yaml` (or next to binary if not installed system-wide).
 
 ```yaml
 port: 8053
 upstream_dns: "8.8.8.8:53"
-log_file: "logs/snet.log"
+log_file: "/var/log/snet/snet.log"  # or relative "logs/snet.log"
 rate_limit: 100
 block_time: 300
 filter_interface: "auto"
@@ -82,89 +116,70 @@ udp_threshold: 200
 filter_window_sec: 60
 ```
 
-All values are optional — missing keys fall back to defaults.
+All values optional — defaults used if missing.
 
-## Installation (system-wide)
-
+Override with flags:
 ```bash
-sudo ./setup.sh
+sudo snet --mode gateway --iface eth0 --rate-limit 50 --udp-threshold 1000
 ```
 
-This:
-- Builds `snet`
-- Installs to `/usr/local/bin/snet`
-- Creates `/etc/snet/config.yaml` (if missing)
-- Creates `/var/log/snet/` for logs
-- Installs systemd service (`snet.service`)
+## Monitoring
 
-Then use:
-
+Live stats:
 ```bash
-snet --help
-sudo systemctl start snet
-sudo systemctl enable snet
-sudo systemctl status snet
+curl http://localhost:8080/stats
+```
+
+Live logs (service):
+```bash
 journalctl -u snet -f
 ```
 
-## Docker
-
+Or direct file:
 ```bash
-# Build
-docker build -t snet:latest .
-
-# DNS-only mode
-docker run -d --name snet-dns \
-  --net=host --cap-add=NET_ADMIN --cap-add=NET_RAW \
-  -v $(pwd)/configs:/configs \
-  -v $(pwd)/logs:/logs \
-  snet:latest --config /configs/config.yaml --port 8053
-
-# Gateway mode
-docker run -d --name snet-gateway \
-  --net=host --privileged \
-  -v $(pwd)/configs:/configs \
-  -v $(pwd)/logs:/logs \
-  snet:latest --config /configs/config.yaml --mode gateway --iface wlp0s20f3
+tail -f /var/log/snet/snet.log
 ```
 
-## Building from source
+## Common Issues & Fixes
 
+**Port 53 already in use**
 ```bash
-# One-time setup & build
-./setup.sh
-
-# Manual
-go mod tidy
-go build -o snet ./cmd/server
+sudo lsof -i :53
+# If systemd-resolved:
+sudo systemctl stop systemd-resolved
 ```
 
-## Disclaimer (read this)
+**Permission denied**
+Run with `sudo`, or set capabilities:
+```bash
+sudo setcap 'cap_net_bind_service,cap_net_raw,cap_net_admin+eip' /usr/local/bin/snet
+```
 
-**SNET is a student/hobby project.**  
-It is **not** audited, **not** hardened, and **not** suitable for protecting real networks, production systems, or anything valuable.
+**False positives from upstream**
+Increase `udp_threshold` to 500–1000.
+
+**No internet in gateway mode**
+Check NAT:
+```bash
+sudo iptables -t nat -L -v
+```
+
+## Disclaimer
+
+**SNET is experimental code.**  
+It is **not** audited, **not** hardened, and **not** suitable for protecting real networks, production systems, sensitive data, or anything valuable.
 
 It may:
 - Miss attacks
-- Cause false positives
-- Leak information
-- Open security holes if misconfigured
-- Break networking if gateway mode is used incorrectly
+- Cause false positives/negatives
+- Disrupt networking
+- Introduce security issues
 
-Use only in isolated test environments.
+Use only in isolated test environments. No warranty, no liability.
 
-## License & Usage Consent
+## License
 
-SNET is released under the **MIT License** (see [LICENSE](./LICENSE)).
+MIT License (see [LICENSE](./LICENSE))
 
-**Important consent notice:**
-
-This project is provided **as-is** for educational, personal, and experimental use only.
-
-By using SNET you explicitly agree and consent to the following:
-
-- This software is **not audited, not hardened, and not suitable** for protecting real networks, production systems, sensitive data, or any environment where security or availability matters.
-- It may miss attacks, create false positives/negatives, open unintended holes, or disrupt networking.
-- The author(s) accept **no liability** whatsoever for any damage, data loss, downtime, legal consequences, or other harm resulting from use (or misuse) of this software.
-- Do not use SNET in any professional, commercial, enterprise, government, or security-critical context.
-- If you redistribute or modify SNET, you must retain this consent notice and the MIT license.
+---
+Built by Samuel Amartey – 2026
