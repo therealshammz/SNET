@@ -2,7 +2,7 @@
 
 **SNET** is a lightweight, single-binary Go tool that acts as a DNS proxy with built-in DDoS mitigation (DNS-layer + L3/L4 flood protection) and optional gateway mode for network-wide filtering.
 
-It is **experimental / educational software** — **not audited, not hardened, and not suitable** for protecting real networks, production systems, sensitive data, or anything important.
+It is **experimental / educational software**, **not audited, not hardened, and not suitable** for protecting real networks, production systems, sensitive data, or anything important.
 
 Use it for learning, home labs, or personal tinkering only. No warranty, no liability.
 
@@ -19,7 +19,7 @@ Use it for learning, home labs, or personal tinkering only. No warranty, no liab
 - HTTP `/stats` endpoint (uptime, blocked IPs, recent detections, config snapshot)
 - Gateway mode: auto IP forwarding + NAT masquerade + iptables drops + cleanup
 - Smart log suppression (no spam during sustained floods)
-- Binary-relative config & logs (portable — move binary anywhere, auto-creates missing files)
+- Binary-relative config & logs
 - Graceful shutdown, structured JSON logging
 
 ## Requirements
