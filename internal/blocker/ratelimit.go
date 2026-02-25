@@ -8,7 +8,6 @@ import (
 	"ddd/internal/logger"
 )
 
-// BlockedIP holds information about a blocked IP
 type BlockedIP struct {
 	IP         string    `json:"ip"`
 	BlockedAt  time.Time `json:"blocked_at"`
@@ -17,7 +16,6 @@ type BlockedIP struct {
 	BlockCount int       `json:"block_count"`
 }
 
-// IPBlocker handles IP blocking and rate limiting
 type IPBlocker struct {
 	mu             sync.RWMutex
 	blockedIPs     map[string]*BlockedIP
@@ -27,7 +25,6 @@ type IPBlocker struct {
 	log            *logger.Logger
 }
 
-// NewIPBlocker creates a new IP blocker
 func NewIPBlocker(blockDuration int, log *logger.Logger) *IPBlocker {
 	return &IPBlocker{
 		blockedIPs:     make(map[string]*BlockedIP),
@@ -38,7 +35,6 @@ func NewIPBlocker(blockDuration int, log *logger.Logger) *IPBlocker {
 	}
 }
 
-// IsBlocked checks if an IP is currently blocked
 func (b *IPBlocker) IsBlocked(ip string) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -51,7 +47,6 @@ func (b *IPBlocker) IsBlocked(ip string) bool {
 	return false
 }
 
-// IsRateLimited checks if an IP is currently rate limited
 func (b *IPBlocker) IsRateLimited(ip string) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -64,7 +59,6 @@ func (b *IPBlocker) IsRateLimited(ip string) bool {
 	return false
 }
 
-// BlockIP blocks an IP address for the configured duration
 func (b *IPBlocker) BlockIP(ip, reason string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -72,7 +66,6 @@ func (b *IPBlocker) BlockIP(ip, reason string) {
 	blockUntil := now.Add(time.Duration(b.blockDuration) * time.Second)
 
 	if blocked, exists := b.blockedIPs[ip]; exists {
-		// Extend and increment
 		blocked.BlockUntil = blockUntil
 		blocked.BlockCount++
 		blocked.Reason = reason
@@ -90,7 +83,6 @@ func (b *IPBlocker) BlockIP(ip, reason string) {
 	b.log.LogMitigationAction(ip, "block", reason)
 }
 
-// RateLimitIP applies rate limiting to an IP
 func (b *IPBlocker) RateLimitIP(ip string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -100,7 +92,6 @@ func (b *IPBlocker) RateLimitIP(ip string) {
 	b.log.LogMitigationAction(ip, "rate_limit", "temporary rate limiting applied")
 }
 
-// UnblockIP manually unblocks an IP address
 func (b *IPBlocker) UnblockIP(ip string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -109,13 +100,11 @@ func (b *IPBlocker) UnblockIP(ip string) {
 	b.log.LogMitigationAction(ip, "unblock", "manually unblocked")
 }
 
-// GetBlockedIP returns information about a blocked IP
 func (b *IPBlocker) GetBlockedIP(ip string) *BlockedIP {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	if blocked, exists := b.blockedIPs[ip]; exists {
 		if time.Now().Before(blocked.BlockUntil) {
-			// Return copy
 			return &BlockedIP{
 				IP:         blocked.IP,
 				BlockedAt:  blocked.BlockedAt,
@@ -129,7 +118,6 @@ func (b *IPBlocker) GetBlockedIP(ip string) *BlockedIP {
 	return nil
 }
 
-// GetAllBlockedIPs returns all currently blocked IPs with details
 func (b *IPBlocker) GetAllBlockedIPs() []BlockedIP {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -150,7 +138,6 @@ func (b *IPBlocker) GetAllBlockedIPs() []BlockedIP {
 	return blocked
 }
 
-// StartCleanup periodically cleans up expired blocks and rate limits
 func (b *IPBlocker) StartCleanup(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
@@ -164,7 +151,6 @@ func (b *IPBlocker) StartCleanup(ctx context.Context) {
 	}
 }
 
-// cleanup removes expired blocks and rate limits
 func (b *IPBlocker) cleanup() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
