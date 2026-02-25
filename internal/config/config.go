@@ -8,7 +8,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds all tunable parameters
 type Config struct {
 	Port                  int    `yaml:"port"`
 	UpstreamDNS           string `yaml:"upstream_dns"`
@@ -29,7 +28,6 @@ type Config struct {
 	FilterWindowSec       int    `yaml:"filter_window_sec"`
 }
 
-// DefaultConfig returns sensible defaults
 func DefaultConfig() Config {
 	return Config{
 		Port:                  8053,
@@ -52,7 +50,6 @@ func DefaultConfig() Config {
 	}
 }
 
-// EnsureConfig creates directories and default config.yaml if missing
 func EnsureConfig(configPath string) error {
     if !filepath.IsAbs(configPath) {
         exe, err := os.Executable()
