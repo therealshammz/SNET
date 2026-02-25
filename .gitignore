@@ -1,24 +1,31 @@
 # Binaries
 snet
 dns-defense-server
-
-# Logs & temp
-logs/
-*.log
-
-# Go build artifacts
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 
-# Editor / IDE files
+# Logs & runtime
+logs/
+*.log
+
+# Config backups / local overrides (never commit real secrets)
+configs/*.local.yaml
+configs/*.bak
+configs/config.local.yaml
+
+# Editor / IDE
 .idea/
 .vscode/
 *.sublime-workspace
 *.sublime-project
 
-# Misc
+# OS junk
 .DS_Store
 Thumbs.db
+
+# Go temp/build
+/go-build/
+*.test
