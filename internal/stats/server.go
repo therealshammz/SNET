@@ -11,7 +11,6 @@ import (
 	"ddd/internal/logger"
 )
 
-// StatsServer runs a simple HTTP server exposing /stats
 type StatsServer struct {
 	addr       string
 	log        *logger.Logger
@@ -19,10 +18,9 @@ type StatsServer struct {
 	cfg        config.Config
 	startTime  time.Time
 	mu         sync.RWMutex
-	detections []DetectionEntry // ring buffer of last 10 detections
+	detections []DetectionEntry
 }
 
-// DetectionEntry for recent attacks
 type DetectionEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 	IP        string    `json:"ip"`
@@ -30,7 +28,6 @@ type DetectionEntry struct {
 	Severity  string    `json:"severity"`
 }
 
-// NewStatsServer creates the stats server
 func NewStatsServer(addr string, log *logger.Logger, blocker *blocker.IPBlocker, cfg config.Config) *StatsServer {
 	return &StatsServer{
 		addr:      addr,
@@ -41,7 +38,6 @@ func NewStatsServer(addr string, log *logger.Logger, blocker *blocker.IPBlocker,
 	}
 }
 
-// Start runs the HTTP server in background
 func (s *StatsServer) Start() {
 	http.HandleFunc("/stats", s.handleStats)
 	s.log.Info("Stats endpoint listening", "addr", s.addr)
@@ -53,7 +49,6 @@ func (s *StatsServer) Start() {
 	}()
 }
 
-// AddDetection adds a new detection entry
 func (s *StatsServer) AddDetection(ip, typ, severity string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -71,7 +66,6 @@ func (s *StatsServer) AddDetection(ip, typ, severity string) {
 	}
 }
 
-// handleStats returns current stats as JSON
 func (s *StatsServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
