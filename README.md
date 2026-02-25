@@ -98,7 +98,7 @@ Default config is created at `/etc/snet/config.yaml` (or next to binary if not i
 
 ```yaml
 port: 8053
-upstream_dns: "8.8.8.8:53"
+upstream_dns: "8.8.8.8"
 log_file: "/var/log/snet/snet.log"  # or relative "logs/snet.log"
 rate_limit: 100
 block_time: 300
